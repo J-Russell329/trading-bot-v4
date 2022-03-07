@@ -60,6 +60,7 @@ class TradingBot():
         self.startingBalance = None
         self.AI = AI
         self.DataCollectedCount = 0
+        self.AI.setAPI(self.api)
         # print(self.AI)
 
     def Start(self):

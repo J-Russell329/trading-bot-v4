@@ -13,7 +13,7 @@ from components.SetTimer import GetTimer
 class AI(Env):
     def __init__(self):
         # the shape of the data  being input
-        self.shape = (208, 400)
+        self.shape = (400, 205)
         # Actions we can take, None, Trade, Buy/Sell, SL pips over 2 +/- .2
         self.action_space = MultiDiscrete([4, 100, 2, 300, 500])
         # allowed matrix of input data
@@ -23,62 +23,93 @@ class AI(Env):
 
         # init variables
         self.nextCollectionTime = datetime.now()
+        self.api= None
         self.proccesable = False
         self.inTrade = False
-        self.runningTicks = 0
         self.under1Min = False 
-        self.reward = 0
+        self.endTradeTick = False
+        self.past15Mins = False
+        print(self)
     
     def SetNextCollectionTime(self, nextCollectionTime):
         self.nextCollectionTime = nextCollectionTime
 
     def setState(self, priceData):
-        print('priceData ----------------------------')
-        print(priceData)
+        # print('priceData ----------------------------')
+        # print(priceData)
         self.state = priceData
         self.proccesable = True
+
+    def setAPI(self, api):
+        self.api = api
+
         
     def step(self, action):
-        print(action)
+        reward = 0
+        done = False
         currentTime = datetime.now()
         while(not self.proccesable):
             GetTimer(currentTime, self.nextCollectionTime)
         self.proccesable = False
         
-        # if not in trade reset datetime 
-        self.tradeStartTime = currentTime.now()
-        # --todo--
-        # check if data is proccesable
-        # if so then wait until next data has been put in
-        # if not continue
-        
+        if self.inTrade and self.state[1].open_trade_count > 0:
+            self.tradeStartTime = currentTime.now()
 
-        # Check if trade is done
-        if self.state[0].open_trade_count == 0 or deltaTime >= 1800 : 
-            done = True
+        # --------------------in trade logic ------------------------
+        if self.inTrade:
+            deltaTime = abs((self.tradeStartTime - currentTime).total_seconds()) 
+
+            # adds true if trade has ended
+            if self.state[0].open_trade_count == 0 and self.state[1].open_trade_count > 0: 
+                self.endTradeTick = True
+
+            # adds true if trade has gone past 15 mins
+            if deltaTime >= 1800 :
+                self.past15Mins = True
+            
+            # the done statment 
+            if endTradeTick:
+                done = True
+
+            # --------------------in trade reward logic ------------------------
+            reward = int((self.state[0].current_balance - self.state[1].current_balance) / self.state[1].current_balance ) # calcs based on percentage +/-
+            if deltaTime >= 900: # calcs based on time over 15 mins
+                reward += -.01 
+            if deltaTime <= 60 and self.under1Min == False:
+                reward += 1
+                self.under1Min = True
+            if self.endTradeTick and deltaTime >= 900:
+                reward += 1
+
+            # force end trade after 30mins do not put in new action
+            if deltaTime >= 3600:
+
+                return self.state, reward, True, info
+
+            # --todo-- 
+            # if in trade do this
+            # else do this
+                
+            print(action)
+            # --------------------in trade action logic ------------------------
+            # int  (0,1, 2, 3 (wait or place order, update SL and TP , drop position)),
+            # int(0-100 (% to trade)),
+            # Int (0,1 (buy or sell)),
+            # int (0-30 (number of SL pips over 2 ))
+            # int (0-100 (number of take profit pips over 2 ))
+            # ]
+            print('in trade')
 
         else:
-            done = False
+            # Out of position [
+            # int  (0,1, 2, 3 (wait or place order, Null , Null)),
+            # Float (0-1 (% to trade)),
+            # Int (0,1 (buy or sell)),
+            # int (0-30 (number of SL pips over 2 ))
+            # int (0-100 (number of take profit pips over 2 ))
+            # ]
+            print('not in trade')
 
-
-        # --todo--
-        # Calculate reward
-        reward = 0
-        print('self.state[0] ----------------------------')
-        print(self.state[0])
-        reward += int((self.state[0].current_balance - self.state[1].current_balance) / self.state[1].current_balance ) # calcs based on percentage +/-
-        deltaTime = abs((self.tradeStartTime - currentTime).total_seconds()) 
-        if deltaTime >= 900: # calcs based on time over 15 mins
-            reward += -.01 
-        if deltaTime <= 60 and self.under1Min === False:
-            reward += 1
-            self.under1Min = True        
-
-
-        # --todo-- 
-        # if in trade do this
-        # else do this
-            
 
 
         
@@ -93,8 +124,8 @@ class AI(Env):
         pass
     
     def reset(self):
-        self.runningTicks = 0 
-        self.under1Min = False
         self.inTrade = False
-        self.reward = 0
-        return self.runningTicks
+        self.under1Min = False 
+        self.endTradeTick = False
+        self.past15Mins = False
+        return self.state if self.state else 0

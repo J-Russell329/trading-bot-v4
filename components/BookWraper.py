@@ -5,8 +5,10 @@ from oandapyV20.endpoints.accounts import AccountInstruments, AccountDetails
 from oandapyV20.exceptions import V20Error
 from models import Book, Session
 from datetime import datetime
+from time import mktime
 from components.SaveBook import *
 import threading
+from pandas import DataFrame as df
 
 class BookWraper():
     def __init__(self, api, instrument, timestamp, granularity, lastest_price, accountID, sessionStart, startingBalance
@@ -273,12 +275,13 @@ class BookWraper():
         print('book saved')
         if (self.DataCollectedCount > 0): #--test-- will change  0 to 400 when done
             self.AI.setState(self.GetLast400())
-            print('ai instance ran')
+            print('ai instance got new state')
         return self
 
     def GetLast400(self):
         modelsSession = Session()
         try:
+            returnArray = []
             priceData = modelsSession.execute(
                     f"""
                     select * from books
@@ -286,7 +289,24 @@ class BookWraper():
                     limit 400
                     """
                     )
-            return priceData.all()
+            priceData = priceData.all()
+
+            # changes the datatype of datetimes to strings
+            for data in priceData:
+                dataCopy = list(data)
+
+                dataCopy[1] = mktime(dataCopy[1].timetuple())
+                dataCopy[2] = mktime(dataCopy[2].timetuple())
+                dataCopy[3] = mktime(dataCopy[3].timetuple())
+                if dataCopy[30] == 'long':
+                    dataCopy[30] = 1
+                elif dataCopy[30] == 'short':
+                    dataCopy[30] = 2
+                else:
+                    dataCopy[30] = 0
+                del dataCopy[4:7]
+                returnArray.append(dataCopy)
+            return returnArray
         finally:
             modelsSession.close()
             

@@ -10,6 +10,7 @@ class AIModel():
         self.model = PPO("MlpPolicy", self.env, verbose=1)
 
     def Start(self, total_timesteps):
+        print(f'total_timesteps: {total_timesteps}')
         self.model.learn(total_timesteps=total_timesteps)
 
     def GetEnv(self):
