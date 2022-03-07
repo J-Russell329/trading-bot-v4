@@ -2,7 +2,7 @@ from models import Session, Book
 def SaveBook(data):
     dbSaveBook = Session()
     newBook = Book()
-    newBook.startingBalance =        data.startingBalance
+    newBook.starting_balance =        data.starting_balance
     newBook.timestamp =        data.timestamp
     newBook.created_at =        data.created_at 
     newBook.updated_at =        data.updated_at

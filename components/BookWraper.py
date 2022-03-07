@@ -11,17 +11,18 @@ import threading
 from pandas import DataFrame as df
 
 class BookWraper():
-    def __init__(self, api, instrument, timestamp, granularity, lastest_price, accountID, sessionStart, startingBalance
-    , AI, DataCollectedCount
+    def __init__(self, api, instrument, timestamp, granularity, lastest_price, accountID, sessionStart, starting_balance
+    , AI, DataCollectedCount, UpdateBotAccount
     # , orders, positions, trades
     ):
         # --todo-- could proably shave off a few ms by puting data direclty into the model Book object
+        self.UpdateBotAccount = UpdateBotAccount
         self.AI = AI
         self.DataCollectedCount = DataCollectedCount
         self.allOrders= {}
         self.allTrades= {}
         self.units = 0
-        self.startingBalance= startingBalance
+        self.starting_balance= starting_balance
         self.orders= []
         self.positions = []
         self.trades = []
@@ -38,62 +39,62 @@ class BookWraper():
         self.bid = lastest_price['bid']
         self.spread = self.PriceToPips(lastest_price['spread'])
         self.mid = lastest_price['mid']
-        self.open = None
-        self.close = None
-        self.high = None
-        self.low = None
-        self.price_difference = None
-        self.volatility = None
-        self.volume = None
-        self.current_balance = None
-        self.marginable_funds = None
-        self.margin_available = None
-        self.open_trade_count = None
-        self.open_position_count = None
-        self.pending_order_count = None
-        self.margin_rate = None
+        self.open = 0
+        self.close = 0
+        self.high = 0
+        self.low = 0
+        self.price_difference = 0
+        self.volatility = 0
+        self.volume = 0
+        self.current_balance = 0
+        self.marginable_funds = 0
+        self.margin_available = 0
+        self.open_trade_count = 0
+        self.open_position_count = 0
+        self.pending_order_count = 0
+        self.margin_rate = 0
         self.day_p_and_l = 0
-        self.day_pips = None
-        self.unrealized_p_and_l = None
-        self.unrealized_pips = None
-        self.position = None
-        self.avg_entry_price = None
-        self.lots = None
+        self.day_pips = 0
+        self.unrealized_p_and_l = 0
+        self.unrealized_pips = 0
+        self.position = 0
+        self.avg_entry_price = 0
+        self.lots = 0
         self.max_potential_loss = 0
         self.avg_stop_loss = 0
         self.avg_loss_pips = 0
         self.avg_take_profit = 0
         self.take_profit_pips = 0
-        self.ma10 = None
-        self.ma25 = None
-        self.ma50 = None
-        self.ma100 = None
-        self.ma200 = None
-        self.ma400 = None
-        self.highest10 = None
-        self.highest25 = None
-        self.highest50 = None
-        self.highest100 = None
-        self.highest200 = None
-        self.highest400 = None
-        self.lowest10 = None
-        self.lowest25 = None
-        self.lowest50 = None
-        self.lowest100 = None
-        self.lowest200 = None
-        self.lowest400 = None
-        self.high_10_percent_10 = None
-        self.high_10_percent_25 = None
-        self.high_10_percent_50 = None
-        self.high_10_percent_100 = None
-        self.high_10_percent_200 = None
-        self.high_10_percent_400 = None
-        self.low_10_percent_10 = None
-        self.low_10_percent_25 = None
-        self.low_10_percent_50 = None
-        self.low_10_percent_100 = None
-        self.low_10_percent_200 = None
-        self.low_10_percent_400 = None
+        self.ma10 = 0
+        self.ma25 = 0
+        self.ma50 = 0
+        self.ma100 = 0
+        self.ma200 = 0
+        self.ma400 = 0
+        self.highest10 = 0
+        self.highest25 = 0
+        self.highest50 = 0
+        self.highest100 = 0
+        self.highest200 = 0
+        self.highest400 = 0
+        self.lowest10 = 0
+        self.lowest25 = 0
+        self.lowest50 = 0
+        self.lowest100 = 0
+        self.lowest200 = 0
+        self.lowest400 = 0
+        self.high_10_percent_10 = 0
+        self.high_10_percent_25 = 0
+        self.high_10_percent_50 = 0
+        self.high_10_percent_100 = 0
+        self.high_10_percent_200 = 0
+        self.high_10_percent_400 = 0
+        self.low_10_percent_10 = 0
+        self.low_10_percent_25 = 0
+        self.low_10_percent_50 = 0
+        self.low_10_percent_100 = 0
+        self.low_10_percent_200 = 0
+        self.low_10_percent_400 = 0
         self.order_book_up_short_all = 0
         self.order_book_down_short_all = 0
         self.order_book_up_short_0 = 0
@@ -324,7 +325,7 @@ class BookWraper():
         self.orders= data['account']['orders']
         self.positions = data['account']['positions'][0]
         self.trades = data['account']['trades']
-        self.day_p_and_l = float(self.startingBalance) - float(self.current_balance)
+        self.day_p_and_l = float(self.starting_balance) - float(self.current_balance)
         if(float(self.positions['long']['units']) > 0):
             self.unrealized_p_and_l = self.positions['long']['unrealizedPL']
             self.position = 'long'
@@ -337,6 +338,16 @@ class BookWraper():
             self.units = self.positions['short']['units']
         self.lots = float(self.units) / 100000
         self.max_potential_loss
+        self.UpdateBotAccount(
+            self.current_balance,
+            self.max_potential_loss,
+            self.margin_available,
+            self.position,
+            self.orders,
+            self.positions,
+            self.trades
+            )
+        
 
         # print (r.response) 
         

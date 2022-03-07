@@ -40,8 +40,8 @@ class AI(Env):
         self.state = priceData
         self.proccesable = True
 
-    def setAPI(self, api):
-        self.api = api
+    def setBot(self, bot):
+        self.bot = bot
 
         
     def step(self, action):
@@ -51,7 +51,13 @@ class AI(Env):
         while(not self.proccesable):
             GetTimer(currentTime, self.nextCollectionTime)
         self.proccesable = False
-        
+
+        # print(action) # prints current action
+        # print(type(action)) # prints current action
+        # usableAction = action.tolist()
+        print(usableAction) # prints current usableAction
+        # print(type(usableAction)) # prints current usableAction
+
         if self.inTrade and self.state[1].open_trade_count > 0:
             self.tradeStartTime = currentTime.now()
 
@@ -90,7 +96,7 @@ class AI(Env):
             # if in trade do this
             # else do this
                 
-            print(action)
+            
             # --------------------in trade action logic ------------------------
             # int  (0,1, 2, 3 (wait or place order, update SL and TP , drop position)),
             # int(0-100 (% to trade)),
@@ -99,6 +105,21 @@ class AI(Env):
             # int (0-100 (number of take profit pips over 2 ))
             # ]
             print('in trade')
+            if usableAction[0] == 1:
+                self.bot.PlaceOrder(
+                    usableAction[1],
+                    usableAction[2],
+                    usableAction[3],
+                    usableAction[4]
+                )
+            elif usableAction[0] == 2:
+                self.bot.UpdateOrder(
+
+                )
+            elif usableAction[0] == 3:
+                self.bot.CancelAllOrders()
+
+            
 
         else:
             # Out of position [
@@ -109,6 +130,14 @@ class AI(Env):
             # int (0-100 (number of take profit pips over 2 ))
             # ]
             print('not in trade')
+            if usableAction[0]:
+                self.bot.PlaceOrder(
+                    float(usableAction[1]),
+                    float(usableAction[2]),
+                    float(usableAction[3]),
+                    float(usableAction[4])
+                )
+
 
 
 

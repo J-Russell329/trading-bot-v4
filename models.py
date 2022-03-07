@@ -42,7 +42,7 @@ class Book(Base):
     price_difference = Column(Float, nullable=True)
     volatility = Column(Float, nullable=True)
     volume = Column(Float, nullable=True)
-    startingBalance = Column(Float, nullable=True)
+    starting_balance = Column(Float, nullable=True)
     current_balance = Column(Float, nullable=True)
     margin_rate = Column(Float, nullable=True)
     marginable_funds = Column(Float, nullable=True)

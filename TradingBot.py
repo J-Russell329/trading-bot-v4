@@ -2,6 +2,7 @@ from oandapyV20 import API
 from oandapyV20.endpoints.accounts import AccountDetails
 from oandapyV20.endpoints.pricing import PricingStream
 from oandapyV20.endpoints.transactions import TransactionsStream
+from oandapyV20.endpoints.orders import OrderCreate
 from datetime import datetime, timedelta, date
 from models import dbMain, Session
 from components.SetTimer import SetTimer
@@ -34,6 +35,10 @@ class TradingBot():
         self.granularity['seconds'] = self.granularity['list'][self.granularity['string'][0]] *  int(self.granularity['string'][1::])
         self.nextTimeStamp =datetime.now()
         self.prevTimeStamp = self.nextTimeStamp
+        self.currentBalance = 0
+        self.max_potential_loss = 0
+        self.margin_available = 0
+        self.position = None
         self.lastest_price = {
             'ask': 0,
             'bid': 0,
@@ -57,10 +62,10 @@ class TradingBot():
         self.orders= []
         self.positions = []
         self.trades = []
-        self.startingBalance = None
+        self.starting_balance = None
         self.AI = AI
         self.DataCollectedCount = 0
-        self.AI.setAPI(self.api)
+        self.AI.setBot(self)
         # print(self.AI)
 
     def Start(self):
@@ -100,13 +105,17 @@ class TradingBot():
         '''
         run once every granularity
         '''
+        # self.AI.SetNextCollectionTime(self.nextTimeStamp + (timedelta(seconds=self.granularity['seconds'])*399))
         while(self.running):
             start = datetime.now()
             threading.Thread(target=self.GetData(), name='GetData', args=(), group=None).start()
             self.prevTimeStamp = self.nextTimeStamp
             collectionTimestamp = self.prevTimeStamp
             self.nextTimeStamp += timedelta(seconds=self.granularity['seconds'])
-            self.AI.SetNextCollectionTime(self.nextTimeStamp)
+            # if (self.DataCollectedCount >= 399):
+            #     self.AI.SetNextCollectionTime(self.nextTimeStamp)
+            if (self.DataCollectedCount >= 399):
+                self.AI.SetNextCollectionTime(self.nextTimeStamp)
             SetTimer(self.granularity['seconds'], start, collectionTimestamp)
         return
     
@@ -114,14 +123,14 @@ class TradingBot():
         r = AccountDetails(accountID=self.accountID)
         self.api.request(r)
         data = r.response
-        self.startingBalance = data['account']['balance']
+        self.starting_balance = data['account']['balance']
 
 
     def GetData(self):
         self.DataCollectedCount += 1
         bookData = BookWraper(
-            self.api, self.instrument, self.nextTimeStamp, self.granularity, self.lastest_price, self.accountID,self.sessionStart, self.startingBalance,
-            self.AI, self.DataCollectedCount
+            self.api, self.instrument, self.nextTimeStamp, self.granularity, self.lastest_price, self.accountID,self.sessionStart, self.starting_balance,
+            self.AI, self.DataCollectedCount, self.UpdateBotAccount
             # self.orders, self.positions, self.trades
             ).getData()
         # --todo-- step the AI model
@@ -220,5 +229,59 @@ class TradingBot():
     #     self.api.request(r)
     #     print (r.response) 
 
-    
+    def UpdateBotAccount(self, currentBalance, max_potential_loss, margin_available, position, orders, positions, trades):
+        self.currentBalance = float(currentBalance)
+        self.max_potential_loss = max_potential_loss,
+        self.margin_available = margin_available,
+        self.position = position
+        self.orders = orders
+        self.positions = positions
+        self.trades = trades
+
+    def PlaceOrder(self, tradePercent, tradeType, SL, TP):
+        print('atempting to place order')
+        # print(f'currentBalance: {self.currentBalance} : {type(self.currentBalance)}')
+        # print(f'tradePercent: {tradePercent} : {type(tradePercent)}')
+        # print(f'tradeType: {tradeType} : {type(tradeType)}')
+        # print(f'SL: {SL} : {type(SL)}')
+        # print(f'TP: {TP} : {type(TP)}')
+        tradeUnitMultiplier = 1 if tradeType == 0 else -1
+        # maxLoss = self.currentBalance * (tradePercent / 10000) 
+        maxLoss = self.currentBalance * (tradePercent * 0.00001) 
+        maxLossRemainder = (self.currentBalance * 0.025)
+        units = int((min(maxLoss, maxLossRemainder) / SL) * 10000 * tradeUnitMultiplier)
+        SLPrice = self.lastest_price['ask'] + (SL * 0.00001) + .002
+        TPPrice = self.lastest_price['bid'] + (TP * 0.00001) + .002
+        data = {
+            "order": {
+                "price": "1.5000",
+                "stopLossOnFill": {
+                "timeInForce": "GTC",
+                "price": SLPrice
+                },
+                "takeProfitOnFill": {
+                "price": TPPrice
+                },
+                "timeInForce": "GTC",
+                "instrument": self.instrument,
+                "units": units,
+                "type": 'Market',
+                "positionFill": "DEFAULT"
+            }
+        }
+        r = OrderCreate(self.accountID, data=data)
+        self.api.request(r)
+        print(r.response)
+        print('order placed')
+
+    def UpdateOrder(self):
+        print('updating order ')
+        print(self.positions)
+        
+
+
+    def CancelAllOrders(self):
+        print('canceling order')
+        print(self.orders)
+
 
