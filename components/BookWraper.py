@@ -12,16 +12,16 @@ from pandas import DataFrame as df
 
 class BookWraper():
     def __init__(self, api, instrument, timestamp, granularity, lastest_price, accountID, sessionStart, starting_balance
-    , AI, DataCollectedCount, UpdateBotAccount
+    , AI, DataCollectedCount, UpdateBotAccount, UpdateSLTP
     # , orders, positions, trades
     ):
         # --todo-- could proably shave off a few ms by puting data direclty into the model Book object
+        self.UpdateSLTP = UpdateSLTP
         self.UpdateBotAccount = UpdateBotAccount
         self.AI = AI
         self.DataCollectedCount = DataCollectedCount
         self.allOrders= {}
         self.allTrades= {}
-        self.units = 0
         self.starting_balance= starting_balance
         self.orders= []
         self.positions = []
@@ -60,6 +60,7 @@ class BookWraper():
         self.position = 0
         self.avg_entry_price = 0
         self.lots = 0
+        self.units = 0
         self.max_potential_loss = 0
         self.avg_stop_loss = 0
         self.avg_loss_pips = 0
@@ -235,9 +236,9 @@ class BookWraper():
         self.position_book_down_long_80 = 0
         self.position_book_up_long_100 = 0
         self.position_book_down_long_100 = 0
-        print(f'inside of bookWraper')
-        print(f'AI: {self.AI}')
-        print(f'Data Collection Count of: {self.DataCollectedCount}')
+        # print(f'inside of bookWraper')
+        # print(f'AI: {self.AI}')
+        # print(f'Data Collection Count of: {self.DataCollectedCount}')
 
     def getData(self):
         getHistory = threading.Thread(target=self.GetHistory, args=(), group=None)
@@ -273,10 +274,19 @@ class BookWraper():
         calcPAndL.join()
 
         SaveBook(self)
-        print('book saved')
+        # print('book saved')
         if (self.DataCollectedCount > 0): #--test-- will change  0 to 400 when done
-            self.AI.setState(self.GetLast400())
-            print('ai instance got new state')
+            print(f'current position: {self.position}')
+            self.AI.setState(self.GetLast400(), {
+                'units':self.units,
+                'max_potential_loss':self.max_potential_loss,
+                'max_potential_loss_percentage': (self.max_potential_loss *100) / self.current_balance  if self.max_potential_loss > 0 else 0,
+                'orders': self.orders,
+                'positions': self.positions,
+                'trades': self.trades,
+                'position' : self.position
+                })
+            # print('ai instance got new state')
         return self
 
     def GetLast400(self):
@@ -315,7 +325,7 @@ class BookWraper():
         r = AccountDetails(accountID=self.accountID)
         self.api.request(r)
         data = r.response
-        self.current_balance = data['account']['balance']
+        self.current_balance = float(data['account']['balance'])
         self.margin_rate = float(data['account']['marginRate'])*1000
         self.marginable_funds = data['account']['marginAvailable']
         self.margin_available = round(self.margin_rate * float(self.marginable_funds),2)
@@ -326,18 +336,18 @@ class BookWraper():
         self.positions = data['account']['positions'][0]
         self.trades = data['account']['trades']
         self.day_p_and_l = float(self.starting_balance) - float(self.current_balance)
-        if(float(self.positions['long']['units']) > 0):
+        if(int(self.positions['long']['units']) != 0):
             self.unrealized_p_and_l = self.positions['long']['unrealizedPL']
             self.position = 'long'
             self.avg_entry_price = self.positions['long']['averagePrice']
-            self.units = self.positions['long']['units']
-        elif (float(self.positions['short']['units']) > 0):
+            self.units = abs(int(self.positions['long']['units']))
+        elif (int(self.positions['short']['units']) != 0):
             self.unrealized_p_and_l = self.positions['short']['unrealizedPL']
             self.position = 'short'
             self.avg_entry_price = self.positions['short']['averagePrice']
-            self.units = self.positions['short']['units']
+            self.units = abs(int(self.positions['short']['units']))
         self.lots = float(self.units) / 100000
-        self.max_potential_loss
+        # self.max_potential_loss --?-- why is this here?
         self.UpdateBotAccount(
             self.current_balance,
             self.max_potential_loss,
@@ -345,7 +355,8 @@ class BookWraper():
             self.position,
             self.orders,
             self.positions,
-            self.trades
+            self.trades,
+            self.units
             )
         
 
@@ -690,13 +701,15 @@ class BookWraper():
                 self.high_10_percent_400 = high_mean
                 self.low_10_percent_400 = low_mean
                 self.ma400 = avg
+        except:
+            pass
         finally:
             modelsSession.close()
 
         
 
     def calcHighLowAvg(self):
-        print('starting calcMovAvgs')
+        # print('starting calcMovAvgs')
         highLowAvg10 = threading.Thread(target=self.getHighLowAvg, kwargs= {'ticks':10}, group=None)
         highLowAvg25 = threading.Thread(target=self.getHighLowAvg, kwargs= {'ticks':25}, group=None)
         highLowAvg50 = threading.Thread(target=self.getHighLowAvg, kwargs= {'ticks':50}, group=None)
@@ -726,43 +739,46 @@ class BookWraper():
         avg_take_profit_amount = 0
         avg_loss_pips = 0
         # estSpreadCost = ((float(self.spread) / 2) * units) * dollarPerUnit
+        try:
+            for trade in self.trades:
+                tradeID = str(trade['id'])
+                self.allTrades[tradeID] = {
+                    'price': float(trade['price']),
+                    'currentUnits': abs(int(trade['currentUnits'])),
+                    'takeProfitOrderID': trade['takeProfitOrderID'],
+                    'stopLossOrderID': trade['stopLossOrderID']
+                }
+            
+            for order in self.orders:
+                orderID = str(order['id'])
+                self.allOrders[orderID] = {
+                    'price': float(order['price']),
+                    'type':order['type'],
+                    'tradeID':order['tradeID']
+                }
 
-        for trade in self.trades:
-            tradeID = str(trade['id'])
-            self.allTrades[tradeID] = {
-                'price': float(trade['price']),
-                'currentUnits': int(trade['currentUnits']),
-                'takeProfitOrderID': trade['takeProfitOrderID'] or None,
-                'stopLossOrderID':trade['stopLossOrderID'] or None
-            }
-        
-        for order in self.orders:
-            orderID = str(order['id'])
-            self.allOrders[orderID] = {
-                'price': float(order['price']),
-                'type':order['type'],
-                'tradeID':order['tradeID']
-            }
+            for allTradeID in self.allTrades:
+                # print(allTradeID)
+                allTrade= self.allTrades[allTradeID]
+                stopLossPrice = self.allOrders[allTrade['stopLossOrderID']]['price']
+                takeProfitPrice = self.allOrders[allTrade['takeProfitOrderID']]['price']
+                # self.UpdateSLTP(stopLossPrice, takeProfitPrice)
+                estSpreadCost = ((float(self.spread) / 2) * allTrade['currentUnits']) * dollarPerUnit
+                # print(f"allTrade['price']: {allTrade['price']}")            
+                # print(f"stopLossPrice: {stopLossPrice}")            
+                avg_take_profit_amount += abs(allTrade['price']-takeProfitPrice)   
+                avg_loss_pips += abs(allTrade['price']-stopLossPrice) 
+                self.max_potential_loss += (abs(allTrade['price']-stopLossPrice) * allTrade['currentUnits'])
+                self.avg_take_profit += (abs(allTrade['price']-takeProfitPrice) * allTrade['currentUnits']) - estSpreadCost
 
-        for allTradeID in self.allTrades:
-            print(allTradeID)
-            allTrade= self.allTrades[allTradeID]
-            stopLossPrice = self.allOrders[allTrade['stopLossOrderID']]['price']
-            takeProfitPrice = self.allOrders[allTrade['takeProfitOrderID']]['price']
-            estSpreadCost = ((float(self.spread) / 2) * allTrade['currentUnits']) * dollarPerUnit
-            print(f"allTrade['price']: {allTrade['price']}")            
-            print(f"stopLossPrice: {stopLossPrice}")            
-            print(f"allTrade['currentUnits']: {allTrade['currentUnits']}")            
-            print(f"dollarPerUnit: {dollarPerUnit}")            
-            print(f"estSpreadCost: {estSpreadCost}")         
-            avg_take_profit_amount += abs(allTrade['price']-takeProfitPrice)   
-            avg_loss_pips += abs(allTrade['price']-stopLossPrice) 
-            self.max_potential_loss += (abs(allTrade['price']-stopLossPrice) * allTrade['currentUnits'])
-            self.avg_take_profit += (abs(allTrade['price']-takeProfitPrice) * allTrade['currentUnits']) - estSpreadCost
+            # print(f"allTrade['currentUnits']: {allTrade['currentUnits']}")            
+            # print(f"dollarPerUnit: {dollarPerUnit}")            
+            # print(f"estSpreadCost: {estSpreadCost}")         
 
-
-        self.take_profit_pips =  self.PriceToPips(avg_take_profit_amount)
-        self.avg_loss_pips = self.PriceToPips(avg_loss_pips)
+            self.take_profit_pips =  self.PriceToPips(avg_take_profit_amount)
+            self.avg_loss_pips = self.PriceToPips(avg_loss_pips)
+        except:
+            pass
 
 
         # for trade in self.trades:

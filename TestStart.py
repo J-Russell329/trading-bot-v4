@@ -13,10 +13,25 @@ model = AIModel()
 AI = model.GetEnv()
 bot = TradingBot('EUR_USD', 'S5', AI)
 threading.Thread(target=bot.Start, args=(), group=None).start()
-threading.Thread(target=model.Start, kwargs={'total_timesteps':100}, group=None).start() # --todo-- this is where I start the model trainer
-# bot.Start
+# bot.CancelAllOrders('short')
+threading.Thread(target=model.Start, kwargs={'total_timesteps':100000}, group=None).start()
 
 
+# time.sleep(120)
+# threading.Thread(target=bot.EndingProcess, args=(), group=None).start()
+# time.sleep(20)
+# threading.Thread(target=model.Save, args=(), group=None).start()
+
+
+# --error-- trade % goes over 2.5%
+# --todo-- add in api check to see if market is open tomorrow if so refresh if error else shut down at 5PM EST 
+# --todo-- finish the update trade
+# --todo-- should check for existing order and cancel on start up
+# --todo-- create gradual stop. should wait until trade has ended before stoping
+# --todo-- change the model to not be PPO
+# --todo-- save to s3 bucket
+# --todo-- grab from s3 bucket and start
+# --todo-- finish and verify scheduler
 
 
 # @sched.scheduled_job('cron', hour='22', minute='30', timezone='America/Chicago')

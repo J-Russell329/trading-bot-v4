@@ -34,6 +34,7 @@ def SaveBook(data):
     newBook.position =        data.position
     newBook.avg_entry_price =        data.avg_entry_price
     newBook.lots =        data.lots
+    newBook.units =        data.units
     newBook.max_potential_loss =        data.max_potential_loss
     newBook.avg_stop_loss =        data.avg_stop_loss
     newBook.avg_loss_pips =        data.avg_loss_pips

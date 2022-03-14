@@ -13,7 +13,7 @@ from components.SetTimer import GetTimer
 class AI(Env):
     def __init__(self):
         # the shape of the data  being input
-        self.shape = (400, 205)
+        self.shape = (400, 206)
         # Actions we can take, None, Trade, Buy/Sell, SL pips over 2 +/- .2
         self.action_space = MultiDiscrete([4, 100, 2, 300, 500])
         # allowed matrix of input data
@@ -29,15 +29,26 @@ class AI(Env):
         self.under1Min = False 
         self.endTradeTick = False
         self.past15Mins = False
-        print(self)
+        self.tradeStartTime = datetime.now()
+        self.currentAccount = {
+                'units':0,
+                'max_potential_loss':0,
+                'max_potential_loss_percentage': 0,
+                'orders': 0,
+                'positions': 0,
+                'trades': 0,
+                'position' : 0
+                }
+        # print(self)
     
     def SetNextCollectionTime(self, nextCollectionTime):
         self.nextCollectionTime = nextCollectionTime
 
-    def setState(self, priceData):
+    def setState(self, priceData, currentAccount):
         # print('priceData ----------------------------')
         # print(priceData)
         self.state = priceData
+        self.currentAccount = currentAccount
         self.proccesable = True
 
     def setBot(self, bot):
@@ -45,28 +56,43 @@ class AI(Env):
 
         
     def step(self, action):
+        # print('steping in AI')
+        currentTime = datetime.now()
+        # print(f'currentTime: {currentTime}')
+        # print(f'nextCollectionTime: {self.nextCollectionTime}')
         reward = 0
         done = False
-        currentTime = datetime.now()
         while(not self.proccesable):
             GetTimer(currentTime, self.nextCollectionTime)
+        # print('out of wait loop in AI')
         self.proccesable = False
 
-        # print(action) # prints current action
         # print(type(action)) # prints current action
-        # usableAction = action.tolist()
-        print(usableAction) # prints current usableAction
+        usableAction = action.tolist()
+        tempNum = 0
+        for action in usableAction: #changes usable action from string to int's
+            if tempNum == 1:
+                action += 1
+            usableAction[tempNum] = int(action)
+
+            tempNum += 1
+        # print(usableAction) # prints current usableAction
         # print(type(usableAction)) # prints current usableAction
 
-        if self.inTrade and self.state[1].open_trade_count > 0:
-            self.tradeStartTime = currentTime.now()
+        # print('self state of 0  --------------------------------------')
+        # print(self.state[0])
+        
+        if self.state[0][20] > 0:
+            self.inTrade = True
+        elif self.state[0][20] == 0:
+            self.tradeStartTime = datetime.now()
 
         # --------------------in trade logic ------------------------
         if self.inTrade:
             deltaTime = abs((self.tradeStartTime - currentTime).total_seconds()) 
 
             # adds true if trade has ended
-            if self.state[0].open_trade_count == 0 and self.state[1].open_trade_count > 0: 
+            if self.state[0][20] == 0 and self.state[1][20] > 0: 
                 self.endTradeTick = True
 
             # adds true if trade has gone past 15 mins
@@ -74,11 +100,11 @@ class AI(Env):
                 self.past15Mins = True
             
             # the done statment 
-            if endTradeTick:
+            if self.endTradeTick:
                 done = True
 
             # --------------------in trade reward logic ------------------------
-            reward = int((self.state[0].current_balance - self.state[1].current_balance) / self.state[1].current_balance ) # calcs based on percentage +/-
+            reward = int((self.state[0][16] - self.state[1][16]) / self.state[1][16] ) # calcs based on percentage +/-
             if deltaTime >= 900: # calcs based on time over 15 mins
                 reward += -.01 
             if deltaTime <= 60 and self.under1Min == False:
@@ -86,11 +112,13 @@ class AI(Env):
                 self.under1Min = True
             if self.endTradeTick and deltaTime >= 900:
                 reward += 1
+            if usableAction[0] == 1 and self.currentAccount['max_potential_loss_percentage'] > 2.5:
+                reward += -.05
 
             # force end trade after 30mins do not put in new action
             if deltaTime >= 3600:
-
-                return self.state, reward, True, info
+                self.bot.CancelAllOrders()
+                self.reset()
 
             # --todo-- 
             # if in trade do this
@@ -104,20 +132,36 @@ class AI(Env):
             # int (0-30 (number of SL pips over 2 ))
             # int (0-100 (number of take profit pips over 2 ))
             # ]
-            print('in trade')
-            if usableAction[0] == 1:
-                self.bot.PlaceOrder(
-                    usableAction[1],
-                    usableAction[2],
-                    usableAction[3],
-                    usableAction[4]
-                )
-            elif usableAction[0] == 2:
-                self.bot.UpdateOrder(
+            
+            if not done:
+                print('--in trade--')
+                # print(f"in trade: current max_potential_loss_percentage: {self.currentAccount['max_potential_loss_percentage']}")
+                actionTradePosition = 'long' if usableAction[2] == 0 else 'short'
+                # LoweringCurrentPosition is true if self.currentAccount['position'] != actionTradePosition
+                LoweringCurrentPosition = False if self.currentAccount['position'] == actionTradePosition else True
+                if usableAction[0] == 1:
+                    if self.currentAccount['max_potential_loss_percentage'] < 2.5 or LoweringCurrentPosition:
+                        print('should buy/sell positions')
+                        self.bot.AddToOrder(
+                            usableAction[1],
+                            usableAction[2]
+                        )
+                elif usableAction[0] == 2:
+                    print('should update orders to uniform sl and tp')
+                    self.bot.UpdateOrder(
+                        usableAction[3],
+                        usableAction[4]
+                    )
+                elif usableAction[0] == 3 or self.past15Mins:
+                    print('should be selling everything')
+                    # self.bot.CancelAllOrders()
+                    # self.reset()
+                else:
+                    print('no action taken')
+                
+            else:
+                print('ai is done with this session')
 
-                )
-            elif usableAction[0] == 3:
-                self.bot.CancelAllOrders()
 
             
 
@@ -129,14 +173,17 @@ class AI(Env):
             # int (0-30 (number of SL pips over 2 ))
             # int (0-100 (number of take profit pips over 2 ))
             # ]
-            print('not in trade')
+            print('--not in trade--')
             if usableAction[0]:
                 self.bot.PlaceOrder(
-                    float(usableAction[1]),
-                    float(usableAction[2]),
-                    float(usableAction[3]),
-                    float(usableAction[4])
+                    usableAction[1],
+                    usableAction[2],
+                    usableAction[3],
+                    usableAction[4]
                 )
+
+        print(usableAction) # prints current usableAction
+        
 
 
 
@@ -146,6 +193,9 @@ class AI(Env):
         info = {}
         
         # Return step information
+        print(f"units: {self.currentAccount['units']}")
+        print(f"max_potential_loss: {self.currentAccount['max_potential_loss']}")
+        print(f"max_potential_loss_percentage: {self.currentAccount['max_potential_loss_percentage']}")
         return self.state, reward, done, info
 
     def render(self):
@@ -153,6 +203,7 @@ class AI(Env):
         pass
     
     def reset(self):
+        print('reseting model')
         self.inTrade = False
         self.under1Min = False 
         self.endTradeTick = False
